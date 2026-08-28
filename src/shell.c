@@ -5,10 +5,14 @@
 #include "../include/parser.h"
 #include "../include/process_mgmt.h"
 #include "../include/builtins.h"
+#include "../include/pipeline_parse.h"
 
 int main(){
     int running = 1;
     int input_buf_pos = 0;
+    int is_built_in = -1;
+    int single_ret_code = -1;
+    int pipe_ret_code = -1;
 
     while(running){
         
@@ -26,24 +30,29 @@ int main(){
             //Manual Tokenizer
             char** command_args = tokenize_command(input_buf, input_buf_pos);
 
-            int is_built_in = -1;
             if(command_args != NULL && command_args[0] != NULL){
                 is_built_in = cae_builtin(command_args); 
-
+                
                 //forking and execution of child process
-                int return_code = -1;
-                if(!is_built_in)
-                    return_code = launch_process(command_args);
-            
+                char*** pipe_args;
+                
+                if(!is_built_in){
+                    //Pipe commands executed
+                    pipe_args = parse_pipe(command_args);
+
+                    if(pipe_args[0] != NULL)
+                        single_ret_code = launch_process(command_args);
+                    else
+                        pipe_ret_code = launch_pipeline(pipe_args);
+                }
             }
 
             //Freeing and reset
-            input_buf_pos = 0;
             free(command_args);
-            free(input_buf);
-
-            if(is_built_in == -1) return 0;
         }
+        input_buf_pos = 0;
+        free(input_buf);
+        if(is_built_in == -1 || pipe_ret_code == -1) return 0;
     }
     return 0;
 }

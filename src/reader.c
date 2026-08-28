@@ -40,3 +40,4 @@ char* read_command(int *input_buf_pos){
     input_buf[*input_buf_pos] = '\0';
     return input_buf;
 }
+
