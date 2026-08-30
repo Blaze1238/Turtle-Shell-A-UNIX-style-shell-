@@ -119,68 +119,75 @@ int launch_process(char** args){
 }
 
 int launch_pipeline(char*** pipe_args){
-    char **left_arg = pipe_args[0];
-    char **right_arg = pipe_args[1];
-    int p[2];
+    int i = 0;
+    int pno = 0;
+    int prev_pipe_read; 
+    int curr_pipe[2];
 
-    if(pipe(p) < 0){
-        perror("pipe creation error");
-        return 1;
+    while(pipe_args[i] != NULL){
+        pno++;
+        i++;
     }
 
-    pid_t p1 = fork();
+    pid_t p[pno];
+    pno = 0;
+    i = 0;
 
-    if(p1 < 0 ){
-        perror("Child process creation error");
-        return -1;
+    while(pipe_args[i] != NULL){
+
+        if(pipe_args[i+1] != NULL)
+            if(pipe(curr_pipe) < 0){
+                perror("pipe creation error");
+                return 1;
+            }
+
+        p[pno] = fork();
+
+        if(p[pno] < 0 ){
+            perror("Child process creation error");
+            return -1;
+        }
+        else if(p[pno] == 0){
+            if(i > 0)
+                if(dup2(prev_pipe_read, STDIN_FILENO) < 0){
+                    perror("Falied to get prev pipe read");
+                    exit(EXIT_FAILURE);
+                }
+            if(pipe_args[i+1] != NULL)
+                if(dup2(curr_pipe[1], STDOUT_FILENO) < 0){
+                    perror("Falied to create write pipe end");
+                    exit(EXIT_FAILURE);
+                }
+            
+            if(pipe_args[i+1] != NULL){
+                close(curr_pipe[0]);
+                close(curr_pipe[1]);
+            }
+            if(i>0)
+                close(prev_pipe_read);
+
+            if(execvp(pipe_args[i][0],pipe_args[i]) < 0){
+                perror("Falied to create write pipe end");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else if(p[pno] > 0){
+            if(i>0) close(prev_pipe_read);
+            if(pipe_args[i+1] != NULL){
+                close(curr_pipe[1]);
+                prev_pipe_read = curr_pipe[0];
+            }
+        }
+        pno++;
+        i++;
     }
-    else if(p1 == 0){
-        if(dup2(p[1],STDOUT_FILENO) < 0){
-            perror("Dup2 pipe error");
+
+    for(int j=0; j<pno; j++){
+        int status; 
+        if(waitpid(p[j],&status,0) < 0){
+            perror("Wait multi-pipe error");
             exit(EXIT_FAILURE);
         }
-        close(p[0]);
-        close(p[1]);
-
-        if(execvp(left_arg[0],left_arg) < 0){
-            perror("Exec pipe error");
-            exit(EXIT_FAILURE);
-        }
-        exit(EXIT_SUCCESS);
-    }
-
-    pid_t p2 = fork();
-
-    if(p2 < 0 ){
-        perror("Child process creation error");
-        return -1;
-    }
-    else if(p2 == 0){
-        if(dup2(p[0],STDIN_FILENO) < 0){
-            perror("Dup2 pipe error");
-            exit(EXIT_FAILURE);
-        }
-        close(p[0]);
-        close(p[1]);
-        
-        if(execvp(right_arg[0],right_arg) < 0){
-            perror("Exec pipe error");
-            exit(EXIT_FAILURE);
-        }
-        exit(EXIT_SUCCESS);
-    }
-
-    close(p[0]);
-    close(p[1]);
-     
-    int p1_sta, p2_sta;
-    if(waitpid(p1,&p1_sta,0) < 0){
-        perror("Pipe wait error");
-        return 1;
-    }
-    if(waitpid(p2,&p2_sta,0) < 0){
-        perror("Pipe wait error");
-        return 1;
     }
     
     return 0;
