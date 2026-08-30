@@ -1,5 +1,8 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 
 #include "../include/reader.h"
 #include "../include/parser.h"
@@ -13,6 +16,10 @@ int main(){
     int is_built_in = -1;
     int single_ret_code = -1;
     int pipe_ret_code = -1;
+
+    // Setting SIGINT on shell to be ignored (Ctrl + c deosnt terminate the shell )
+    signal(SIGINT,SIG_IGN);
+    signal(SIGTTOU,SIG_IGN); //This diables sigttou 
 
     while(running){
         
@@ -30,8 +37,14 @@ int main(){
             //Manual Tokenizer
             char** command_args = tokenize_command(input_buf, input_buf_pos);
 
-            if(command_args != NULL && command_args[0] != NULL){
+            if(command_args != NULL && command_args[0] != NULL && command_args[0][0] != '\0'){
                 is_built_in = cae_builtin(command_args); 
+
+                if(is_built_in == -1){
+                    free(command_args);
+                    free(input_buf);
+                    return 0;
+                }
                 
                 //forking and execution of child process
                 char*** pipe_args;
@@ -48,11 +61,14 @@ int main(){
             }
 
             //Freeing and reset
-            free(command_args);
+            if (command_args != NULL) {
+                free(command_args);
+            }
+            if (input_buf != NULL) {
+                free(input_buf);
+            }
+            input_buf_pos = 0;
         }
-        input_buf_pos = 0;
-        free(input_buf);
-        if(is_built_in == -1 || pipe_ret_code == -1) return 0;
     }
     return 0;
 }

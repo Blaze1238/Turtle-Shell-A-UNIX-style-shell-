@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <unistd.h>
 #include <sys/types.h>
 #include <stdio.h>
@@ -5,6 +7,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <string.h>
+#include <signal.h>
 
 #include "../include/process_mgmt.h"
 #include "../include/pipeline_parse.h"
@@ -101,6 +104,9 @@ int launch_process(char** args){
             return 0;
         }
 
+        signal(SIGINT, SIG_DFL);
+        signal(SIGTTOU, SIG_DFL);
+
         if(execvp(args[0],args) < 0){
             perror("Exec failed!");
             exit(EXIT_FAILURE); 
@@ -148,6 +154,12 @@ int launch_pipeline(char*** pipe_args){
             return -1;
         }
         else if(p[pno] == 0){
+            signal(SIGINT,SIG_DFL);
+            signal(SIGTTOU,SIG_DFL);
+
+            if(i == 0) setpgid(0,0);
+            else setpgid(0, p[0]);
+
             if(i > 0)
                 if(dup2(prev_pipe_read, STDIN_FILENO) < 0){
                     perror("Falied to get prev pipe read");
@@ -172,6 +184,13 @@ int launch_pipeline(char*** pipe_args){
             }
         }
         else if(p[pno] > 0){
+            if(i == 0) {
+                setpgid(p[0],p[0]); 
+            }
+            else{
+                setpgid(p[pno],p[0]);
+            }
+
             if(i>0) close(prev_pipe_read);
             if(pipe_args[i+1] != NULL){
                 close(curr_pipe[1]);
@@ -182,12 +201,22 @@ int launch_pipeline(char*** pipe_args){
         i++;
     }
 
+    if (tcsetpgrp(STDIN_FILENO,p[0]) < 0){
+        perror("Cannot set pipeline child processes to foreground");
+        return -1;
+    }
+
     for(int j=0; j<pno; j++){
         int status; 
         if(waitpid(p[j],&status,0) < 0){
             perror("Wait multi-pipe error");
             exit(EXIT_FAILURE);
         }
+    }
+
+    if (tcsetpgrp(STDIN_FILENO, getpgrp()) < 0){
+        perror("Cannot set shell to foreground");
+        return -1;
     }
     
     return 0;
